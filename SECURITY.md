@@ -19,6 +19,8 @@ We secure files by making their URLs unguessable:
 - Modulo bias is eliminated using rejection sampling in `crypto.randomBytes`.
 - The prefix space is roughly $36^{12} \approx 4.7 \times 10^{18}$ combinations. Brute-forcing this space over HTTP is infeasible under any reasonable network constraints.
 
+Uploaded HTML is also served with a browser CSP sandbox. Scripts may run so generated dashboards still work, but they do not receive same-origin privilege, cannot submit forms, cannot navigate the top-level page, cannot load plugins, and cannot call arbitrary external networks. For reliable rendering under this policy, bundle assets locally in the artifact folder.
+
 ---
 
 ## Threat Model & Scope

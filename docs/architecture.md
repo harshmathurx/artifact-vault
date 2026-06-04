@@ -79,6 +79,7 @@ We inject security headers into every single response via Vercel's global header
 | Header | Value | Purpose |
 | ------ | ----- | ------- |
 | `X-Robots-Tag` | `noindex, nofollow, noarchive, nosnippet` | Instructs search engine crawlers and AI bots not to index, cache, or archive any content in this vault. |
+| `Content-Security-Policy` | `sandbox allow-scripts; ...` | Runs artifact scripts in a browser sandbox without same-origin privilege and blocks forms, plugins, top navigation, and arbitrary outbound network calls. |
 | `X-Content-Type-Options` | `nosniff` | Disables MIME type sniffing, forcing the browser to respect the declared content type. |
 | `X-Frame-Options` | `DENY` | Prevents pages from being rendered inside an iframe, blocking clickjacking vectors. |
 | `Referrer-Policy` | `no-referrer` | Ensures that if an artifact contains links to external pages, clicking those links won't leak the artifact's URL in the `Referer` header. |

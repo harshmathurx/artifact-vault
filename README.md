@@ -152,6 +152,7 @@ I used rejection sampling because naive modulo on `randomBytes` introduces bias 
 Headers set on every response:
 
 - `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet` — search engines and AI crawlers are told to leave
+- `Content-Security-Policy: sandbox allow-scripts; ...` — artifact scripts can run, but without same-origin privilege, arbitrary outbound network, forms, plugins, or top navigation
 - `X-Content-Type-Options: nosniff` — prevents MIME-type sniffing
 - `X-Frame-Options: DENY` — no embedding in iframes
 - `Referrer-Policy: no-referrer` — the URL doesn't leak via referrer headers when users click external links
