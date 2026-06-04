@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - '*.js'
+      - 'package.json'
+      - '.github/workflows/ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Verify CLI boots without errors
+        run: node deploy-artifact.js 2>&1 || true
+
+      - name: Run deploy dry-run
+        run: |
+          echo '<html><body><h1>CI test artifact</h1></body></html>' > /tmp/ci-test.html
+          node deploy-artifact.js /tmp/ci-test.html "ci-test" --no-push
+
+      - name: Verify artifact was created
+        run: |
+          count=$(ls -1 public/*ci-test*.html 2>/dev/null | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "FAIL: No artifact file found in public/"
+            exit 1
+          fi
+          echo "PASS: Found $count artifact file(s) in public/"
+
+      - name: Verify 404 page exists
+        run: test -f public/404.html

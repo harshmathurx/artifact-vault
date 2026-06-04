@@ -1,0 +1,33 @@
+# ── Secrets & Environment ──
+.env
+.env.local
+.env.*.local
+
+# ── Dependencies ──
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ── Vercel ──
+.vercel/
+
+# ── OS Files ──
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# ── Editor / IDE ──
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ── Logs ──
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
