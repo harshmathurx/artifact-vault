@@ -1,8 +1,8 @@
 # artifact-vault
 
-A quiet static host for HTML files. You deploy an artifact, it gets an unguessable URL, and nobody else can find it. No directory listings, no search engine indexing, no file name leaks.
+I built this because I kept doing the same thing manually. An agent generates an HTML file. I want to share it. I don't want it indexed, archived, or discoverable. I don't want to spin up a server. I just want a link that works and goes away when I stop caring about it.
 
-Built for AI agent outputs, prototypes, dashboards, and anything you want to share with a link but not with the world.
+This is a static file host on Vercel. Files get cryptographically random URLs. Nothing is indexed. The root returns a 404. That's the whole thing.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fharshmathurx%2Fartifact-vault)
 
@@ -10,32 +10,50 @@ Built for AI agent outputs, prototypes, dashboards, and anything you want to sha
 
 ---
 
-## What it does
+## What it actually does
 
-You give it an HTML file and a description. It generates a cryptographically random 12-character hash, slugifies the description, copies the file to `public/<hash>-<slug>.html`, commits, pushes, and prints the live URL. Vercel deploys it automatically.
+You give the CLI an HTML file and a description. It generates a 12-character hash using `crypto.randomBytes` with rejection sampling (no modulo bias), slugifies the description, copies the file to `public/<hash>-<slug>.html`, commits, pushes, and prints the URL.
 
-The root URL returns a 404. Directory listings return a 404. Anything that isn't an exact file match returns a 404. Search engines are told to go away via `X-Robots-Tag`. The file name is unguessable.
+Vercel picks up the push, skips the build if nothing in `public/` changed (saves your build minutes), and serves the file from its CDN.
 
-That's it. There is no server, no database, no auth layer. Just static files behind obfuscated URLs on Vercel's CDN.
+If you don't want to use the terminal, you can drop files into `incoming/` via the GitHub UI and a GitHub Action handles the rest.
+
+The URL looks like this: `https://your-vault.vercel.app/q2w3e4r5t6y7-my-dashboard`
+
+Nobody finds that by accident.
 
 ---
 
-## How to set it up
+## What it is not
+
+It is not an access control system. There is no login, no token, no per-user permissions. The security model is URL unpredictability. Anyone with the link can view the file.
+
+If you need gated access, use a proper application server. This tool is for sharing prototypes and agent outputs with people you're already talking to, not for hosting anything sensitive.
+
+I want to be clear about this upfront because I've seen people reach for the wrong tool and then wonder why it didn't protect them. URL obscurity is a real thing, and it's appropriate here. It's not authentication.
+
+---
+
+## Setup
+
+This takes about three minutes.
 
 ### 1. Fork or use this template
 
-Click the Vercel deploy button above, or fork the repo manually and connect it to Vercel yourself.
+Click the Vercel deploy button above. It clones the repo into your GitHub account and deploys it to Vercel in one shot.
 
-### 2. Clone your copy
+Or fork manually and connect the repo to Vercel yourself through the dashboard.
+
+### 2. Clone your fork
 
 ```bash
 git clone https://github.com/<your-username>/artifact-vault.git
 cd artifact-vault
 ```
 
-### 3. Set your domain
+### 3. Set your domain (optional, but useful)
 
-Copy the env template and fill in your Vercel project URL. This is optional, but without it the CLI will print placeholder URLs instead of real ones.
+Without this, the CLI prints a placeholder URL instead of the real one. With it, you get the actual link immediately after deploying.
 
 ```bash
 cp .env.example .env
@@ -47,26 +65,31 @@ Edit `.env`:
 VERCEL_PROJECT_URL=https://your-project.vercel.app
 ```
 
-That's the entire setup.
+That's it. No npm install. No build step. The deploy script uses only Node.js built-ins.
+
+### 4. Point Vercel at the build-skip script
+
+In your Vercel project settings, go to **Settings > Git > Ignored Build Step** and set it to:
+
+```
+bash ignore-build.sh
+```
+
+This tells Vercel to skip rebuilding when only the README or CI config changed. Without it, every commit triggers a build. With it, only changes to `public/` or `vercel.json` do.
 
 ---
 
 ## Deploying an artifact
 
-### From the command line
+### From the terminal
 
 ```bash
 node deploy-artifact.js path/to/file.html "My Dashboard"
 ```
 
-This will:
-1. Validate the file (must be `.html` or `.htm`)
-2. Generate a random hash like `q2w3e4r5t6y7`
-3. Copy it to `public/q2w3e4r5t6y7-my-dashboard.html`
-4. Stage, commit, and push to Git
-5. Print the live URL
+The script validates the file, generates the hash, copies, commits, pushes, and prints the URL. Done.
 
-If you want to batch multiple artifacts before pushing:
+To batch multiple files before pushing:
 
 ```bash
 node deploy-artifact.js file1.html "First thing" --no-push
@@ -76,34 +99,34 @@ git push origin main
 
 ### From the GitHub UI
 
-You can skip the terminal entirely:
+If you don't have a terminal handy:
 
-1. Go to the `incoming/` folder on GitHub
+1. Go to `incoming/` in your GitHub repo
 2. Click **Add file** then **Upload files**
-3. Drop your `.html` file in
+3. Drop in your `.html` file
 4. Commit to `main`
 
-A GitHub Action picks up the file, obfuscates the name, moves it to `public/`, and deploys it. The live URL shows up in the Actions run summary.
+A GitHub Action processes it, moves it to `public/` with an obfuscated name, and prints the live URL in the run summary.
 
-If your artifact has relative assets (images, CSS, JS), put them in a folder with an `index.html` at the root and upload the whole folder. The Action will obfuscate the folder name but keep the internal structure intact.
+If your artifact has relative assets (CSS, JS, images), put everything in a folder with `index.html` at the root and upload the whole folder. The Action obfuscates the folder name but leaves the internal structure alone, so relative paths still resolve.
 
 ---
 
-## How the security works
+## How the URL security works
 
-There is no authentication and no access control. The security model is URL obscurity, which is appropriate for non-sensitive artifacts. If someone has the link, they can view the file. If they don't have the link, they can't find it.
+The hash is 12 characters from the set `a-z0-9`. That's 36^12 values, roughly 4.7 x 10^18. Brute-forcing that over HTTP, even with aggressive rate limiting disabled, would take longer than you care about.
 
-Specifically:
+I used rejection sampling because naive modulo on `randomBytes` introduces bias when the character set size (36) doesn't evenly divide the byte range (256). It's a small thing but it's the right way to do it. The threshold is 252 (36 x 7), bytes at or above that are discarded and resampled.
 
-- File names use 12 alphanumeric characters generated with `crypto.randomBytes` and rejection sampling (no modulo bias). That's 36^12 possible hashes, roughly 4.7 x 10^18 combinations.
-- Root and index requests return 404.
-- `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet` is set globally.
-- `X-Content-Type-Options: nosniff` prevents MIME-type sniffing.
-- `X-Frame-Options: DENY` blocks embedding in iframes.
-- `Referrer-Policy: no-referrer` prevents URL leakage through referrer headers.
-- `Permissions-Policy` disables camera, microphone, geolocation, and FLoC.
+Headers set on every response:
 
-If you need actual access control (login, tokens, per-user permissions), this is not the right tool. Use a proper application server.
+- `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet` — search engines and AI crawlers are told to leave
+- `X-Content-Type-Options: nosniff` — prevents MIME-type sniffing
+- `X-Frame-Options: DENY` — no embedding in iframes
+- `Referrer-Policy: no-referrer` — the URL doesn't leak via referrer headers when users click external links
+- `Permissions-Policy` — camera, microphone, geolocation, and FLoC disabled
+
+The 404 page has a strict CSP: `script-src 'none'`, `object-src 'none'`, `frame-ancestors 'none'`. Nothing executes on the error page.
 
 ---
 
@@ -113,49 +136,37 @@ If you need actual access control (login, tokens, per-user permissions), this is
 .
 ├── .github/
 │   ├── workflows/
-│   │   ├── ingest-artifact.yml    # Processes files uploaded via GitHub UI
-│   │   └── ci.yml                 # Runs validation on PRs
+│   │   ├── ingest-artifact.yml    # Processes GitHub UI uploads
+│   │   └── ci.yml                 # Validates the deploy script on PRs
 │   ├── ISSUE_TEMPLATE/
 │   ├── PULL_REQUEST_TEMPLATE.md
 │   ├── CODEOWNERS
 │   └── FUNDING.yml
-├── incoming/                      # Drop zone for GitHub UI uploads
-│   └── .gitkeep
-├── public/                        # Deployed artifacts live here
-│   ├── 404.html                   # Custom error page
-│   └── .gitkeep
 ├── docs/
 │   └── architecture.md            # How everything fits together
+├── incoming/                      # Drop zone for GitHub UI uploads
+│   └── .gitkeep
+├── public/                        # Served by Vercel
+│   ├── 404.html
+│   └── .gitkeep
 ├── deploy-artifact.js             # CLI deploy tool
-├── ingest-incoming.js             # Ingestion script for GitHub Actions
-├── ignore-build.sh                # Vercel build-skip optimization
-├── vercel.json                    # Routing rules and security headers
+├── ingest-incoming.js             # GitHub Actions ingestion runner
+├── ignore-build.sh                # Vercel build-skip script
+├── vercel.json                    # Routing and security headers
 ├── package.json
 ├── .env.example
 ├── .editorconfig
-├── .nvmrc
-├── CONTRIBUTING.md
-├── CODE_OF_CONDUCT.md
-├── SECURITY.md
-└── LICENSE
+└── .nvmrc
 ```
-
----
-
-## Build-skip optimization
-
-Vercel rebuilds on every push by default, which wastes build minutes when you change something unrelated like the README. The `ignore-build.sh` script tells Vercel to skip the build unless `public/` or `vercel.json` actually changed.
-
-Set this in your Vercel project settings under **Settings > Git > Ignored Build Step** as `bash ignore-build.sh`.
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The short version: fork, branch, change, test, PR. Keep it simple.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## License
 
-MIT. See [LICENSE](LICENSE) for the full text.
+MIT. See [LICENSE](LICENSE).

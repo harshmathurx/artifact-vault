@@ -1,83 +1,114 @@
 # Architecture
 
-This document explains how artifact-vault works internally. It is short because the system is simple.
+This document describes how `artifact-vault` is designed. It's short because the system has few moving parts. If you're looking for complex architectures, you won't find them here. 
+
+The core design principle is **zero running costs, zero backend management, and high obscurity**.
 
 ---
 
-## Overview
+## System Overview
 
-artifact-vault is a static file host. There is no server, no database, no build step. HTML files go into the `public/` directory. Vercel serves them from its CDN. The URL of each file is made unguessable by prepending a cryptographically random hash.
+```mermaid
+graph TD
+    A[Local CLI deploy-artifact.js] -->|Git Commit & Push| B(GitHub Repo)
+    C[GitHub Web UI Upload to /incoming] -->|Push Trigger| D(GitHub Actions workflow)
+    D -->|ingest-incoming.js| B
+    B -->|Webhook Trigger| E(Vercel Platform)
+    E -->|Serves Static Files| F[Client Browser]
+```
 
-There are two ways to add files:
+At its core, `artifact-vault` is just a Git repository connected to a Vercel project. Vercel serves the contents of the `/public` directory as static assets via their CDN edge.
 
-1. The CLI tool (`deploy-artifact.js`) runs locally and copies files into `public/`, then commits and pushes.
-2. The GitHub UI upload path puts files in `incoming/`, and a GitHub Action moves them to `public/` with obfuscated names.
+We deploy files via two pathways:
+1. **The CLI tool (`deploy-artifact.js`):** Runs on your local machine, copies files to the `/public` folder, commits them, and pushes them directly to your repository.
+2. **The GitHub UI runner (`ingest-artifact.yml`):** Runs on GitHub Actions. It listens for additions to `/incoming`, runs `ingest-incoming.js` to process and obfuscate them, commits the results, and pushes them back to the repository.
 
-Both paths produce the same result: an HTML file in `public/` with a name like `q2w3e4r5t6y7-my-dashboard.html`.
-
----
-
-## Hash generation
-
-File names use a 12-character lowercase alphanumeric hash. The character set is `a-z0-9` (36 characters), giving 36^12 possible values, which is roughly 4.7 x 10^18.
-
-The hash is generated using `crypto.randomBytes` with rejection sampling. Each random byte is checked against a threshold (252, which is 36 x 7) before being used. Bytes above that threshold are discarded. This eliminates modulo bias entirely, which matters when the character set size (36) does not evenly divide the byte range (256).
-
-The resulting hash is concatenated with a slugified description to form the file name: `<hash>-<slug>.html`.
+Once Vercel receives the push, it updates the files served by its CDN edge.
 
 ---
 
-## Vercel routing
+## File Name Obfuscation
 
-The `vercel.json` file defines three route rules in order:
+Our security relies entirely on the unpredictability of the file names. If a user can guess the filename, they can access the file.
 
-1. Requests to `/` or `/index.html` return 404 with the custom error page. This prevents directory-style browsing.
-2. The `"handle": "filesystem"` directive tells Vercel to check if the requested path matches an actual file in `public/`. If it does, serve it.
-3. All other requests return 404.
+We generate a 12-character alphanumeric hash using the character set `a-z0-9`. 
+- Character set size ($N$) = 36.
+- Hash length ($L$) = 12.
+- Total search space = $36^{12} \approx 4.73 \times 10^{18}$ combinations.
 
-Vercel's `cleanUrls` option strips the `.html` extension from URLs, so `public/abc123-dashboard.html` is accessible at `/abc123-dashboard`.
+### Eliminating Modulo Bias
+A common mistake in random string generation is using modulo arithmetic on random bytes: `randomByte % 36`. Since 256 is not evenly divisible by 36 ($256 \pmod{36} = 4$), the first 4 characters (`a`, `b`, `c`, `d`) have a slightly higher probability of appearing than the others ($7/256$ vs $6/256$). This degrades the entropy of the hash.
+
+To avoid this, we use **rejection sampling**:
+1. We read random bytes from `crypto.randomBytes`.
+2. We set a threshold at the largest multiple of 36 that fits in a single byte: $36 \times 7 = 252$.
+3. Any random byte value $\ge 252$ is discarded and resampled.
+4. Valid bytes are mapped to the character set using modulo 36: `byteValue % 36`.
+
+This guarantees that every character has an identical $1/36$ probability of selection.
 
 ---
 
-## Security headers
+## Vercel Routing Layer (`vercel.json`)
 
-Every response includes these headers (set globally in `vercel.json`):
+Vercel handles the routing rules. We use a three-step pipeline:
+
+```json
+{
+  "cleanUrls": true,
+  "routes": [
+    { "src": "^/(index\\.html)?$", "status": 404, "dest": "/404.html" },
+    { "handle": "filesystem" },
+    { "src": "/.*", "status": 404, "dest": "/404.html" }
+  ]
+}
+```
+
+1. **Root Block:** Requests to the root `/` or `/index.html` are explicitly blocked and redirected to `404.html` with a `404` HTTP status. This prevents users from mapping the domain name to find out if it's active.
+2. **Filesystem Handler:** The `"handle": "filesystem"` directive tells Vercel to check if the requested URL matches an actual file in `/public`. If it does, Vercel serves the file immediately.
+3. **Fallback Block:** Any request that does not match an actual file falls through the filesystem handler and is served `404.html` with a `404` status.
+
+We also enable `cleanUrls`. Vercel automatically redirects `/abc-def.html` to `/abc-def` and serves it without the extension, making the final links look cleaner.
+
+---
+
+## Hardened Security Headers
+
+We inject security headers into every single response via Vercel's global header routing:
 
 | Header | Value | Purpose |
-|--------|-------|---------|
-| X-Robots-Tag | noindex, nofollow, noarchive, nosnippet | Tells search engines and AI crawlers not to index, cache, or snippet any page |
-| X-Content-Type-Options | nosniff | Prevents browsers from MIME-sniffing the response |
-| X-Frame-Options | DENY | Blocks the page from being embedded in an iframe |
-| Referrer-Policy | no-referrer | Prevents the artifact URL from leaking in referrer headers when clicking external links |
-| Permissions-Policy | camera=(), microphone=(), geolocation=(), interest-cohort=() | Disables unused browser APIs and opts out of FLoC/Topics |
+| ------ | ----- | ------- |
+| `X-Robots-Tag` | `noindex, nofollow, noarchive, nosnippet` | Instructs search engine crawlers and AI bots not to index, cache, or archive any content in this vault. |
+| `X-Content-Type-Options` | `nosniff` | Disables MIME type sniffing, forcing the browser to respect the declared content type. |
+| `X-Frame-Options` | `DENY` | Prevents pages from being rendered inside an iframe, blocking clickjacking vectors. |
+| `Referrer-Policy` | `no-referrer` | Ensures that if an artifact contains links to external pages, clicking those links won't leak the artifact's URL in the `Referer` header. |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Blocks access to browser sensor APIs, keeping pages isolated. |
 
-The 404 page also includes a Content-Security-Policy meta tag that restricts script execution to `'none'` and blocks object embeds and frame ancestors.
-
----
-
-## Build-skip optimization
-
-Vercel rebuilds the project on every push by default. Since the project has no build step (it is just static files), this wastes build minutes on irrelevant commits like README edits.
-
-The `ignore-build.sh` script is configured as Vercel's "Ignored Build Step." It compares the current commit with its parent and only proceeds with the build if `public/` or `vercel.json` changed. Everything else is skipped.
+Additionally, the custom 404 page includes a Content Security Policy (`CSP`) meta tag:
+`default-src 'self'; script-src 'none'; object-src 'none'; frame-ancestors 'none';`
+This ensures that even if someone manages to inject script elements into a nonexistent URL path, the browser will refuse to execute them on the error page.
 
 ---
 
-## GitHub Actions ingest pipeline
+## Build Optimization (`ignore-build.sh`)
 
-The `ingest-artifact.yml` workflow triggers when files are pushed to `incoming/` (excluding `.gitkeep`). It runs `ingest-incoming.js`, which:
+Every time a file is pushed, Vercel runs a build by default. Since this is a static hosting project, there is no compile step, but Vercel still spends time spinning up a container.
 
-1. Reads all non-hidden files in `incoming/`
-2. For each HTML file: generates a hash, slugifies the original name, renames to `public/<hash>-<slug>.html`
-3. For each directory with an `index.html`: obfuscates the folder name, moves the entire directory to `public/`
-4. Skips non-HTML files with a warning
-5. Writes a summary table to the GitHub Actions step summary with live URLs
-6. Commits and pushes the changes
-
-The workflow uses `actions/checkout@v4` with `fetch-depth: 0` to ensure the full history is available. It commits as `github-actions[bot]` and includes `[skip ci]` in the commit message to prevent recursive workflow triggers.
+To prevent wasting build minutes on documentation updates, we write a custom check in `ignore-build.sh`:
+- It compares the current commit hash against the previous commit hash (`git diff --quiet HEAD^ HEAD`).
+- If changes are confined to files outside of `/public` and `vercel.json` (such as `README.md`, `docs/`, or `.github/`), it exits with `0` (telling Vercel to skip the build).
+- If `/public` or `vercel.json` have changed, it exits with `1` (telling Vercel to rebuild and deploy).
 
 ---
 
-## What this is not
+## GitHub UI Ingest Pipeline
 
-This is not an access control system. Anyone with the URL can view the file. The security model depends entirely on URL unpredictability. If you need per-user permissions, token-gated access, or audit logs, use something else.
+The Actions pipeline (`/github/workflows/ingest-artifact.yml`) allows uploading files directly through the GitHub web interface:
+
+1. A user uploads an HTML file or an asset folder to the `/incoming` directory via GitHub's interface and commits it to `main`.
+2. The commit triggers the GitHub Actions workflow.
+3. The workflow runs `ingest-incoming.js`, which loops through all contents in `/incoming` (ignoring `.gitkeep`).
+4. If it finds an HTML file, it generates a hash, slugifies the name, and moves it to `/public`.
+5. If it finds a subdirectory, it expects an `index.html` to be present. It generates a hash for the folder name, slugifies the description, moves the entire folder to `/public`, and leaves the internal structure intact. This ensures relative paths inside the folder (like CSS/images) don't break.
+6. Once processed, it commits the changes back to `main` as `github-actions[bot]`.
+7. The commit message includes `[skip ci]` to prevent triggering a recursive GitHub Actions run.
