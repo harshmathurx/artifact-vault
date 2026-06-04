@@ -53,7 +53,7 @@ cd artifact-vault
 
 ### 3. Set your domain (optional, but useful)
 
-Without this, the CLI prints a placeholder URL instead of the real one. With it, you get the actual link immediately after deploying.
+Without this, the CLI prints a placeholder URL instead of the real one. With it, you get the actual link immediately after deploying. You have full control over the domain setup: you can configure a free subdomain on `vercel.app` (e.g., `yourname-artifacts.vercel.app`) or point your own custom domain (e.g., `artifacts.yourname.com`) directly in your Vercel project settings.
 
 ```bash
 cp .env.example .env
