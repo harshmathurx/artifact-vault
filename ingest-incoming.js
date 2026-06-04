@@ -11,10 +11,32 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const { generateSecureHash, slugify, getBaseUrl } = require('./deploy-artifact');
 
 const incomingDir = path.join(__dirname, 'incoming');
 const publicDir = path.join(__dirname, 'public');
+const args = process.argv.slice(2);
+const shouldCommit = args.includes('--commit');
+const noPush = args.includes('--no-push');
+
+function runGitCommand(gitArgs) {
+  return spawnSync('git', gitArgs, {
+    cwd: __dirname,
+    encoding: 'utf8',
+  });
+}
+
+function getRootHtmlFiles(dirPath) {
+  return fs
+    .readdirSync(dirPath, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((name) => {
+      const ext = path.extname(name).toLowerCase();
+      return ext === '.html' || ext === '.htm';
+    });
+}
 
 // Ensure target directories exist
 if (!fs.existsSync(incomingDir)) {
@@ -53,16 +75,26 @@ for (const item of items) {
   let isDir = false;
 
   if (stats.isDirectory()) {
-    // Directories must contain an index.html entrypoint
+    // Directories need an entrypoint. If there is exactly one root HTML file,
+    // promote it to index.html so folder uploads from agents still serve.
     const hasIndex =
       fs.existsSync(path.join(itemPath, 'index.html')) ||
       fs.existsSync(path.join(itemPath, 'index.htm'));
 
     if (!hasIndex) {
-      console.warn(
-        `\x1b[33mWarning: Directory '${item}' does not contain index.html or index.htm. Skipping.\x1b[0m`
-      );
-      continue;
+      const rootHtmlFiles = getRootHtmlFiles(itemPath);
+      if (rootHtmlFiles.length === 1) {
+        const rootHtmlPath = path.join(itemPath, rootHtmlFiles[0]);
+        fs.renameSync(rootHtmlPath, path.join(itemPath, 'index.html'));
+        console.log(
+          `\x1b[36mPromoted ${item}/${rootHtmlFiles[0]} to ${item}/index.html\x1b[0m`
+        );
+      } else {
+        console.warn(
+          `\x1b[33mWarning: Directory '${item}' needs index.html or exactly one root HTML file. Skipping.\x1b[0m`
+        );
+        continue;
+      }
     }
 
     const hash = generateSecureHash(12);
@@ -131,3 +163,42 @@ for (const item of processedUrls) {
   console.log(`\x1b[32m👉 ${item.name}: ${item.url}\x1b[0m`);
 }
 console.log('');
+
+if (shouldCommit && processedUrls.length > 0) {
+  console.log('\x1b[36mCommitting processed artifacts...\x1b[0m');
+
+  const addResult = runGitCommand(['add', '-A', 'incoming', 'public']);
+  if (addResult.status !== 0) {
+    console.error(`\x1b[31mError adding processed artifacts: ${addResult.stderr}\x1b[0m`);
+    process.exit(1);
+  }
+
+  const diffResult = runGitCommand(['diff', '--cached', '--quiet']);
+  if (diffResult.status === 0) {
+    console.log('No processed artifact changes to commit.');
+    process.exit(0);
+  }
+
+  const commitResult = runGitCommand([
+    'commit',
+    '-m',
+    `chore(ingest): process ${processedUrls.length} artifact${processedUrls.length === 1 ? '' : 's'}`,
+  ]);
+  if (commitResult.status !== 0) {
+    console.error(`\x1b[31mError committing processed artifacts: ${commitResult.stderr}\x1b[0m`);
+    process.exit(1);
+  }
+
+  if (noPush) {
+    console.log('\x1b[33mSkipping Git push (--no-push active).\x1b[0m');
+  } else {
+    const pushResult = runGitCommand(['push', 'origin', 'main']);
+    if (pushResult.status !== 0) {
+      console.warn(
+        `\x1b[33mWarning: Git push failed. Push manually when ready. Error: ${pushResult.stderr.trim()}\x1b[0m`
+      );
+    } else {
+      console.log('\x1b[32m✔ Pushed processed artifacts to origin/main.\x1b[0m');
+    }
+  }
+}

@@ -4,7 +4,7 @@ I built this because I kept doing the same thing manually. An agent generates an
 
 This is a static file host on Vercel. Files get cryptographically random URLs. Nothing is indexed. The root returns a 404. That's the whole thing.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fharshmathurx%2Fartifact-vault)
+[![Use this template](https://img.shields.io/badge/Use_this_template-private_copy-2ea44f?logo=github)](https://github.com/harshmathurx/artifact-vault/generate)
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue) ![Node >=18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
 
@@ -38,20 +38,39 @@ I want to be clear about this upfront because I've seen people reach for the wro
 
 This takes about three minutes.
 
-### 1. Fork or use this template
+### 1. Create a private copy
 
-Click the Vercel deploy button above. It clones the repo into your GitHub account and deploys it to Vercel in one shot.
+Click **Use this template** above.
 
-Or fork manually and connect the repo to Vercel yourself through the dashboard.
+On GitHub:
 
-### 2. Clone your fork
+1. Choose your account or organization
+2. Name the repo
+3. Select **Private**
+4. Click **Create repository**
+
+Do not fork the public repo if privacy matters. A public GitHub fork is public. Create a private copy from the template instead.
+
+### 2. Connect it to Vercel
+
+In Vercel, import the private GitHub repo you just created. Vercel can deploy from a private repo after you grant it access.
+
+If you intentionally want a fast public clone instead, you can use Vercel's clone flow:
+
+```text
+https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fharshmathurx%2Fartifact-vault
+```
+
+For the privacy-first flow, use the GitHub template path above.
+
+### 3. Clone your private copy
 
 ```bash
 git clone https://github.com/<your-username>/artifact-vault.git
 cd artifact-vault
 ```
 
-### 3. Set your domain (optional, but useful)
+### 4. Set your domain (optional, but useful)
 
 Without this, the CLI prints a placeholder URL instead of the real one. With it, you get the actual link immediately after deploying. You have full control over the domain setup: you can configure a free subdomain on `vercel.app` (e.g., `yourname-artifacts.vercel.app`) or point your own custom domain (e.g., `artifacts.yourname.com`) directly in your Vercel project settings.
 
@@ -67,7 +86,7 @@ VERCEL_PROJECT_URL=https://your-project.vercel.app
 
 That's it. No npm install. No build step. The deploy script uses only Node.js built-ins.
 
-### 4. Point Vercel at the build-skip script
+### 5. Point Vercel at the build-skip script
 
 In your Vercel project settings, go to **Settings > Git > Ignored Build Step** and set it to:
 
@@ -108,7 +127,19 @@ If you don't have a terminal handy:
 
 A GitHub Action processes it, moves it to `public/` with an obfuscated name, and prints the live URL in the run summary.
 
-If your artifact has relative assets (CSS, JS, images), put everything in a folder with `index.html` at the root and upload the whole folder. The Action obfuscates the folder name but leaves the internal structure alone, so relative paths still resolve.
+Do not upload artifacts to `.github/ISSUE_TEMPLATE/`, GitHub issues, docs, or the repo root. Vercel only serves deployed artifacts after they land in `public/`.
+
+If your artifact has relative assets (CSS, JS, images), put everything in a folder with `index.html` at the root and upload the whole folder. If the folder has exactly one root HTML file with another name, such as `document name.html`, the ingest script renames it to `index.html` automatically. The Action obfuscates the folder name but leaves the internal structure alone, so relative paths still resolve.
+
+### From VS Code
+
+Drop files or folders into `incoming/`, then run:
+
+```bash
+npm run deploy:incoming
+```
+
+This processes `incoming/`, moves artifacts to `public/`, commits, pushes to `origin/main`, and lets Vercel deploy from the push.
 
 ---
 
@@ -151,6 +182,7 @@ The 404 page has a strict CSP: `script-src 'none'`, `object-src 'none'`, `frame-
 │   └── .gitkeep
 ├── deploy-artifact.js             # CLI deploy tool
 ├── ingest-incoming.js             # GitHub Actions ingestion runner
+├── AGENTS.md                      # Minimal agent operating contract
 ├── ignore-build.sh                # Vercel build-skip script
 ├── vercel.json                    # Routing and security headers
 ├── package.json

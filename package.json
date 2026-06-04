@@ -6,7 +6,8 @@
   "private": false,
   "scripts": {
     "deploy": "node deploy-artifact.js",
-    "ingest": "node ingest-incoming.js"
+    "ingest": "node ingest-incoming.js",
+    "deploy:incoming": "node ingest-incoming.js --commit"
   },
   "keywords": [
     "vercel",
