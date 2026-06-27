@@ -2,7 +2,7 @@
 
 I built this because I kept doing the same thing manually. An agent generates an HTML file. I want to share it. I don't want it indexed, archived, or discoverable. I don't want to spin up a server. I just want a link that works and goes away when I stop caring about it.
 
-This is a static file host on Vercel. Files get cryptographically random URLs. Nothing is indexed. The root returns a 404. That's the whole thing.
+This is an unlisted static file host on Vercel. Files get cryptographically random URLs. Nothing is indexed. The root returns a 404. That's the whole thing.
 
 [![Use this template](https://img.shields.io/badge/Use_this_template-private_copy-2ea44f?logo=github)](https://github.com/harshmathurx/artifact-vault/generate)
 
@@ -70,6 +70,15 @@ git clone https://github.com/<your-username>/artifact-vault.git
 cd artifact-vault
 ```
 
+Make sure Git can create commits from this repo:
+
+```bash
+git config user.name "Your Name"
+git config user.email "you@example.com"
+```
+
+Use `--global` if you want those settings to apply to every repo on your machine.
+
 ### 4. Set your domain (optional, but useful)
 
 Without this, the CLI prints a placeholder URL instead of the real one. With it, you get the actual link immediately after deploying. You have full control over the domain setup: you can configure a free subdomain on `vercel.app` (e.g., `yourname-artifacts.vercel.app`) or point your own custom domain (e.g., `artifacts.yourname.com`) directly in your Vercel project settings.
@@ -83,6 +92,14 @@ Edit `.env`:
 ```
 VERCEL_PROJECT_URL=https://your-project.vercel.app
 ```
+
+If you use the GitHub UI upload flow, add the same value as a GitHub Actions secret so the workflow summary can print real links:
+
+1. Open your repo on GitHub
+2. Go to **Settings > Secrets and variables > Actions**
+3. Click **New repository secret**
+4. Name it `VERCEL_PROJECT_URL`
+5. Set the value to your Vercel project URL, for example `https://your-project.vercel.app`
 
 That's it. No npm install. No build step. The deploy script uses only Node.js built-ins.
 

@@ -31,6 +31,11 @@ jobs:
       - name: Verify CLI boots without errors
         run: node deploy-artifact.js 2>&1 || true
 
+      - name: Configure Git identity for dry-run commits
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Run deploy dry-run
         run: |
           echo '<html><body><h1>CI test artifact</h1></body></html>' > /tmp/ci-test.html

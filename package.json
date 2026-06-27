@@ -1,7 +1,7 @@
 {
   "name": "artifact-vault",
   "version": "1.0.0",
-  "description": "Secure, zero-SEO static artifact hosting on Vercel. Obfuscated URLs, crawler blocking, and a one-command deploy CLI.",
+  "description": "Unlisted, zero-SEO static artifact hosting on Vercel. Obfuscated URLs, crawler blocking, and a one-command deploy CLI.",
   "main": "deploy-artifact.js",
   "private": false,
   "scripts": {
@@ -13,7 +13,7 @@
     "vercel",
     "static-hosting",
     "artifact",
-    "secure",
+    "unlisted",
     "obfuscation",
     "zero-seo",
     "cli"
@@ -22,7 +22,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/harshmathurx/artifact-vault.git"
   },
   "engines": {
     "node": ">=18.0.0"

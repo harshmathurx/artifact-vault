@@ -66,6 +66,41 @@ function runGitCommand(args) {
 }
 
 /**
+ * Return configured Git user identity, respecting local config first and then
+ * global/system config through Git's normal lookup rules.
+ */
+function getGitIdentityStatus() {
+  const name = runGitCommand(['config', '--get', 'user.name']);
+  const email = runGitCommand(['config', '--get', 'user.email']);
+  return {
+    hasName: name.status === 0 && name.stdout.trim().length > 0,
+    hasEmail: email.status === 0 && email.stdout.trim().length > 0,
+  };
+}
+
+/**
+ * Fail before writing artifacts if Git cannot create a commit. This avoids the
+ * confusing default Git error and keeps first-run setup obvious.
+ */
+function ensureGitIdentity() {
+  const identity = getGitIdentityStatus();
+  if (identity.hasName && identity.hasEmail) {
+    return;
+  }
+
+  console.error('\x1b[31mError: Git user identity is not configured.\x1b[0m');
+  console.error('\nSet it for this repository, then run the deploy again:\n');
+  if (!identity.hasName) {
+    console.error('  git config user.name "Your Name"');
+  }
+  if (!identity.hasEmail) {
+    console.error('  git config user.email "you@example.com"');
+  }
+  console.error('\nUse --global instead of repository-local config if you want this on every repo.');
+  process.exit(1);
+}
+
+/**
  * Generate a cryptographically secure alphanumeric hash string.
  * Uses rejection sampling to eliminate modulo bias entirely.
  *
@@ -176,6 +211,28 @@ function main() {
 
   const destPath = path.join(publicDir, destFileName);
 
+  // ── Git Automation Preflight ──
+  // Fail before copying the artifact if Git would be unable to commit it.
+  const gitCheck = runGitCommand(['rev-parse', '--is-inside-work-tree']);
+  if (gitCheck.status !== 0) {
+    console.log(
+      '\x1b[33mWarning: Not a git repository. Initializing new git repo...\x1b[0m'
+    );
+    const initResult = runGitCommand(['init']);
+    if (initResult.status !== 0) {
+      console.error('\x1b[31mError initializing git repository.\x1b[0m');
+      process.exit(1);
+    }
+    const checkoutResult = runGitCommand(['checkout', '-b', 'main']);
+    if (checkoutResult.status !== 0) {
+      console.error(
+        `\x1b[31mError creating main branch: ${checkoutResult.stderr.trim()}\x1b[0m`
+      );
+      process.exit(1);
+    }
+  }
+  ensureGitIdentity();
+
   try {
     fs.copyFileSync(sourcePath, destPath);
   } catch (err) {
@@ -189,20 +246,6 @@ function main() {
 
   // ── Git Automation ──
   console.log('\x1b[36m[2/3] Automating Git operations...\x1b[0m');
-
-  // Ensure we're in a git repo
-  const gitCheck = runGitCommand(['rev-parse', '--is-inside-work-tree']);
-  if (gitCheck.status !== 0) {
-    console.log(
-      '\x1b[33mWarning: Not a git repository. Initializing new git repo...\x1b[0m'
-    );
-    const initResult = runGitCommand(['init']);
-    if (initResult.status !== 0) {
-      console.error('\x1b[31mError initializing git repository.\x1b[0m');
-      process.exit(1);
-    }
-    runGitCommand(['checkout', '-b', 'main']);
-  }
 
   // Stage the new artifact
   const relDestPath = path.join('public', destFileName);

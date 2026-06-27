@@ -27,6 +27,28 @@ function runGitCommand(gitArgs) {
   });
 }
 
+function ensureGitIdentity() {
+  const name = runGitCommand(['config', '--get', 'user.name']);
+  const email = runGitCommand(['config', '--get', 'user.email']);
+  const hasName = name.status === 0 && name.stdout.trim().length > 0;
+  const hasEmail = email.status === 0 && email.stdout.trim().length > 0;
+
+  if (hasName && hasEmail) {
+    return;
+  }
+
+  console.error('\x1b[31mError: Git user identity is not configured.\x1b[0m');
+  console.error('\nSet it for this repository, then run deploy:incoming again:\n');
+  if (!hasName) {
+    console.error('  git config user.name "Your Name"');
+  }
+  if (!hasEmail) {
+    console.error('  git config user.email "you@example.com"');
+  }
+  console.error('\nUse --global instead of repository-local config if you want this on every repo.');
+  process.exit(1);
+}
+
 function getRootHtmlFiles(dirPath) {
   return fs
     .readdirSync(dirPath, { withFileTypes: true })
@@ -55,6 +77,10 @@ const items = fs
 if (items.length === 0) {
   console.log('No new items in incoming/ to process.');
   process.exit(0);
+}
+
+if (shouldCommit) {
+  ensureGitIdentity();
 }
 
 const processedUrls = [];
